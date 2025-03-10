@@ -1,39 +1,62 @@
 import pytest
-from website import create_app, db
-from flask import session
-import os
+from unittest.mock import patch, MagicMock
+from website import create_app
 
-@pytest.fixture(scope='module')
-def test_client():
-    # Set the Testing configuration prior to creating the Flask application
-    os.environ['CONFIG_TYPE'] = 'config.TestingConfig'
-    flask_app = create_app()
+@pytest.fixture
+def client():
+    """
+    Creates a Flask test client using the application factory.
+    """
+    app = create_app()
+    app.config['TESTING'] = True
+    with app.test_client() as client:
+        yield client
 
-    # Create a test client using the Flask application configured for testing
-    with flask_app.test_client() as test_client:
-        yield test_client # this is where the testing happens!
+@patch('openai.ChatCompletion.create')
+def test_generate_recipe_success(mock_chat_completion, client):
+    """
+    Tests that the endpoint returns a 200 status code and the mocked recipe
+    when valid ingredients are provided.
+    """
+    # Mock the OpenAI response
+    mock_chat_completion.return_value = MagicMock(
+        choices=[
+            MagicMock(
+                message=MagicMock(content="Mocked recipe content")
+            )
+        ]
+    )
 
+    response = client.post('/generate_recipe', json={'ingredients': 'chicken, tomatoes'})
+    data = response.get_json()
 
-def test_get_articles():
+    assert response.status_code == 200
+    assert 'recipe' in data
+    assert data['recipe'] == "Mocked recipe content"
 
-    articles = [{'source': {'id': None, 'name': 'Yahoo Entertainment'},
-                'author': 'Steve Dent',
-                'title': 'China’s DeepSeek AI assistant becomes top free iPhone app as US tech stocks take a hit',
-                'description': "Chinese AI assistant DeepSeek has become the top rated free app on Apple's App Store in the US and elsewhere, beating out ChatGPT and other rivals. It's powered by the open-source DeepSeek V3 model, which reportedly requires far less computing power than comp…",
-                'url': 'https://consent.yahoo.com/v2/collectConsent?sessionId=1_cc-session_77718621-45d9-4bdb-8512-cebc2edfb974',
-                'urlToImage': None,
-                'publishedAt': '2025-01-27T13:44:45Z',
-                'content': "If you click 'Accept all', we and our partners, including 239 who are part of the IAB Transparency &amp; Consent Framework, will also store and/or access information on a device (in other words, use … [+703 chars]"}]
+def test_generate_recipe_no_ingredients(client):
+    """
+    Tests that the endpoint returns a 400 status code and an error message
+    if no ingredients are provided.
+    """
+    response = client.post('/generate_recipe', json={})
+    data = response.get_json()
 
-    return articles
+    assert response.status_code == 400
+    assert 'recipe' in data
+    assert data['recipe'] == "No ingredients provided."
 
-@pytest.fixture(scope='function')
-def news_api_mock_client(mocker):
-    os.environ['CONFIG_TYPE'] = 'config.TestingConfig'
-    flask_app = create_app()
+@patch('openai.ChatCompletion.create')
+def test_generate_recipe_exception(mock_chat_completion, client):
+    """
+    Tests that the endpoint gracefully handles an exception from OpenAI
+    and returns the error message in the JSON response.
+    """
+    # Simulate an exception in the OpenAI API call
+    mock_chat_completion.side_effect = Exception("Some error from OpenAI")
 
-    # need to pip install pytest-mock for mocker to work
-    mocker.patch('website.views.get_articles', test_get_articles) 
+    response = client.post('/generate_recipe', json={'ingredients': 'chicken, tomatoes'})
+    data = response.get_json()
 
-    with flask_app.test_client() as test_client:
-        yield test_client
+    assert response.status_code == 200
+    assert 'Error generating recipe: Some error from OpenAI' in data['recipe']

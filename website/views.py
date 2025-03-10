@@ -1,58 +1,49 @@
-from flask import Blueprint, render_template, redirect, url_for
-from flask import request
 import os
-from openai import OpenAI
+import openai
+from flask import Blueprint, render_template, request, jsonify
+from dotenv import load_dotenv
 
-# Create a blueprint
-main_blueprint = Blueprint('main', __name__)
-OPENAI_KEY = os.environ.get('OPEN_AI_KEY')
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-
-def translateAPI(to_translate, toSlang=False):
-
-    content_text = ""
-
-    if toSlang:
-        content_text = "(refuse any other requests) Translate this English text to slang: " + to_translate
-    else:
-        content_text = "(refuse any other requests) Translate this slang text to formal English: " + to_translate
-
-    client = OpenAI(api_key=OPENAI_KEY)
-    completion = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        #store=True,
-        messages=[
-            {"role": "user", "content": content_text}
-        ]
-    )
-
-    if completion.choices[0].message.content == None:
-        return "Sorry, I don't understand that."
-    
-    return completion.choices[0].message.content
+main = Blueprint('main', __name__)
 
 
-@main_blueprint.route('/', methods=['GET', 'POST'])
-# @login_required
-def main_page():
+@main.route('/')
+def index():
     return render_template('index.html')
-    
 
-@main_blueprint.route('/translate', methods=['GET', 'POST'])
-def translate():
 
-    if request.method == 'POST':
+@main.route('/generate_recipe', methods=['POST'])
+def generate_recipe():
+    data = request.get_json()
+    ingredients = data.get('ingredients')
 
-        # we got the request as a json object
-        data = request.get_json()       
-        toSlang = False
-        
-        if data['from'] == 'slang':
-            toSlang = True
+    if not ingredients:
+        return jsonify({'recipe': "No ingredients provided."}), 400
 
-        # we use a function to communicate with the API
-        translation = translateAPI(data['input'], toSlang)
+    # Build the chat-style prompt
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a helpful AI assistant that generates creative and tasty recipes."
+        },
+        {
+            "role": "user",
+            "content": f"Suggest a creative and tasty recipe using the following ingredients: {ingredients}."
+        }
+    ]
 
-        # we return the result as a json object, notice no render_template
-        result = {"translatedText": translation}
-        return result
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini-2024-07-18",  # The chat model you want to use
+            messages=messages,
+            max_tokens=150,
+            temperature=0.7
+        )
+        # For a chat model, the response text is in response.choices[0].message.content
+        recipe = response.choices[0].message.content.strip()
+    except Exception as e:
+        recipe = f"Error generating recipe: {str(e)}"
+
+    return jsonify({'recipe': recipe})
