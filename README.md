@@ -1,8 +1,8 @@
-# Slang Translate - Flask Web App  
+# Recipe AI - Flask Web App  
 
 ## Project Overview  
 
-Slang Translate is a Flask-based web application that leverages the OpenAI API to translate slang into formal English and other variations. Users can input slang phrases and receive clear, structured translations. This project demonstrates API integration, Flask development, and simple front-end design for an interactive user experience.  
+Generates recipes using AI based on ingredients given 
 
 ---
 
